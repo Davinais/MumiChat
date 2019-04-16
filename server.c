@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <sys/epoll.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -12,6 +13,21 @@
 #define DEFAULT_SERVER_PORT 9487
 #define MAX_CONNECT 20
 #define MAX_PENDING 10
+#define LOG_PREFIX "[Chatroom] "
+
+pthread_mutex_t newfd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void* recvClients(void* newfd) {
+    int ep_fd;
+    if((ep_fd = epoll_create1(0)) < 0) {
+        perror(LOG_PREFIX"Epoll Create failed: ");
+        exit(EXIT_FAILURE);
+    }
+    struct epoll_event ev, events[MAX_CONNECT];
+    memset(&ev, 0, sizeof(ev));
+
+    pthread_exit(NULL);
+}
 
 int main(int argc, char* argv[]) {
     
@@ -24,25 +40,41 @@ int main(int argc, char* argv[]) {
     int local_sd;
     int enable = 1;
     if((local_sd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("[Chatroom] Creating socket failed: ");
+        perror(LOG_PREFIX"Creating socket failed: ");
         exit(EXIT_FAILURE);
     }
     if(setsockopt(local_sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0) {
-        perror("[Chatroom] Setsockopt failed: ");
+        perror(LOG_PREFIX"Setsockopt failed: ");
         exit(EXIT_FAILURE);
     }
 
     if(bind(local_sd, (struct sockaddr*)&sa_local, sizeof(sa_local)) < 0) {
-        perror("[Chatroom] Binding socket failed: ");
+        perror(LOG_PREFIX"Binding socket failed: ");
         exit(EXIT_FAILURE);
     }
     if(listen(local_sd, MAX_PENDING) < 0) {
-        perror("[Chatroom] Listening failed: ");
+        perror(LOG_PREFIX"Listening failed: ");
         exit(EXIT_FAILURE);
     }
 
     int client_sd;
     struct sockaddr_in sa_client;
+    socklen_t sa_len = sizeof(sa_client);
+    
+    pthread_t recvs;
+    if(pthread_create(&recvs, NULL, recvClients, NULL) != 0) {
+        perror(LOG_PREFIX"Create Thread failed: ");
+        exit(EXIT_FAILURE);
+    }
+    pthread_detach(recvs);
+
+    while(1) {
+        if ((client_sd = accept(local_sd, (struct sockaddr *)&sa_client, &sa_len)) < 0 ) {
+            perror(LOG_PREFIX"Accepting Connection Failed: ");
+            exit(EXIT_FAILURE);
+        }
+        
+    }
 
     return 0;
 }
