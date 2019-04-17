@@ -7,17 +7,21 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include "packet.h"
 
 #define DEFAULT_SERVER_PORT 9487
-#define BUFFER_MAX 2048
 
 int local_sd;
 
 void* recvHandle() {
     int local_msglen;
-    char buf[BUFFER_MAX];
-    while ((local_msglen = recv(local_sd, buf, sizeof(buf), 0))) {
-        fputs(buf, stdout);
+    packet_t rx_pkt;
+    struct tm *rxtm;
+    memset((char *)&rx_pkt, 0, sizeof(rx_pkt));
+    while ((local_msglen = recv(local_sd, &rx_pkt, sizeof(rx_pkt), 0))) {
+        rxtm = localtime(&(rx_pkt.timestamp));
+        fprintf(stdout, "%02d:%02d:%02d | [%s] %s\n", 
+            rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, rx_pkt.username, rx_pkt.buf);
     }
     pthread_exit(NULL);
 }
@@ -25,7 +29,8 @@ void* recvHandle() {
 int main(int argc, char *argv[]) {
     struct hostent *hp;
     struct sockaddr_in sin;
-    char buf[BUFFER_MAX];
+    packet_t tx_pkt;
+    memset((char *)&tx_pkt, 0, sizeof(tx_pkt));
 
     if(argc != 2) {
         fprintf(stderr, "Error: Usage: %s Server-IP\n", argv[0]);
@@ -41,6 +46,10 @@ int main(int argc, char *argv[]) {
     memcpy((char *)&sin.sin_addr, hp->h_addr, hp->h_length);
     sin.sin_port = htons(DEFAULT_SERVER_PORT);
 
+    printf("Enter User Name: ");
+    // TODO: Input Buffer Check
+    fgets(tx_pkt.username, sizeof(tx_pkt.username), stdin);
+    tx_pkt.username[strlen(tx_pkt.username)-1] = '\0';
     if ((local_sd = socket(PF_INET,SOCK_STREAM,0)) < 0) {
         perror("[Chatroom] Creating socket failed: ");
         exit(EXIT_FAILURE);
@@ -57,14 +66,13 @@ int main(int argc, char *argv[]) {
     }
     pthread_detach(recvs);
 
-    uint16_t net_msglen = 0;
-    uint32_t local_msglen = 0;
-    while (fgets(buf, sizeof(buf), stdin))  {
-        buf[BUFFER_MAX-1] = '\0' ; 
-        local_msglen = strlen(buf) + 1;
-        net_msglen = htons(local_msglen);
-        send(local_sd, &net_msglen, 2, 0);
-        send(local_sd, buf, local_msglen, 0 ) ; 
+    tx_pkt.pkt_type = SINGLE_PKT;
+    tx_pkt.opt = SENDMSG;
+    // TODO: Input Buffer Check
+    while (fgets(tx_pkt.buf, sizeof(tx_pkt.buf), stdin)) {
+        tx_pkt.buf[strlen(tx_pkt.buf)-1] = '\0';
+        tx_pkt.timestamp = time(NULL);
+        send(local_sd, &tx_pkt, sizeof(tx_pkt), 0 );
     }
     return 0;
 }

@@ -8,12 +8,13 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
+#include "packet.h"
 
 #define DEFAULT_SERVER_PORT 9487
 #define MAX_CONNECT 20
 #define MAX_PENDING 10
-#define BUFFER_MAX  2048
 
 #define MESSAGE_STORE_FILE "chatmsg.txt"
 
@@ -46,7 +47,6 @@ int main(int argc, char* argv[]) {
 
     int client_sd;
     uint32_t addrlen, recvbytes;
-    uint16_t msgread;
     struct sockaddr_in sa_client;
 
     int fd_max;
@@ -65,7 +65,9 @@ int main(int argc, char* argv[]) {
         perror("[Chatroom] Cannot open file: ");
         exit(EXIT_FAILURE);
     }
-    char readbuf[BUFFER_MAX] = { 0 };
+    packet_t uni_pkt;
+    memset((char *)&uni_pkt, 0, sizeof(uni_pkt));
+    struct tm *rxtm;
     while(1) {
         read_fds = master_fds;
 
@@ -90,8 +92,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 else {
-                    uint16_t msglen = 0;
-                    if((recvbytes = recv(i, &msglen, 2, 0)) <= 0) {
+                    if((recvbytes = recv(i, &uni_pkt, sizeof(uni_pkt), 0)) <= 0) {
                         if(recvbytes == 0) {
                             printf("[Chatroom] Client Disconnected: %d\n", i);
                         }
@@ -102,35 +103,23 @@ int main(int argc, char* argv[]) {
                         FD_CLR(i, &master_fds);
                     }
                     else {
-                        msglen = ntohs(msglen);
-                        for(msgread = 0; msglen > 0;) {
-                            if((recvbytes = recv(i, readbuf+msgread,
-                                ((msglen<=BUFFER_MAX)?msglen:BUFFER_MAX), 0)) <= 0) {
-                                perror("[Chatroom] recv Failed: ");
-                                close(i);
-                                FD_CLR(i, &master_fds);
-                                break;
-                            }
-                            msglen -= recvbytes;
-                            msgread += recvbytes;
-                        }
-                        printf("[New Mesg] %s", readbuf);
-                        fwrite(readbuf, sizeof(char), msgread-1, msg_file); // -1 for the last '\0'
-                        fputs("", msg_file);
-                        fflush(msg_file);
-                        for(j = 0; j <= fd_max; j++) {
-                            if(FD_ISSET(j, &master_fds)) {
-                                if((j != local_sd) && (j != i)) {
-                                    int msgsend = 0, tmp = 0;
-                                    while(msgsend < msgread) {
-                                        if((tmp = send(j, readbuf+msgsend, msgread, 0)) < 0) {
+                        if(uni_pkt.opt == SENDMSG) {
+                            printf("[New Mesg] <%s> %s\n", uni_pkt.username, uni_pkt.buf);
+                            uni_pkt.timestamp = time(NULL);
+                            rxtm = localtime(&(uni_pkt.timestamp));
+                            fprintf(msg_file, "%02d:%02d:%02d | [%s] %s\n", 
+                                rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, uni_pkt.username, uni_pkt.buf);
+                            fflush(msg_file);
+                            for(j = 0; j <= fd_max; j++) {
+                                if(FD_ISSET(j, &master_fds)) {
+                                    if((j != local_sd) && (j != i)) {
+                                        if((send(j, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
                                             perror("[Chatroom] send Failed: ");
                                         }
-                                        msgsend += tmp;
                                     }
                                 }
                             }
-                        }
+                        } 
                     }
                 }
             }
