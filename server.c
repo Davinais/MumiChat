@@ -15,6 +15,8 @@
 #define MAX_PENDING 10
 #define BUFFER_MAX  2048
 
+#define MESSAGE_STORE_FILE "chatmsg.txt"
+
 int main(int argc, char* argv[]) {
     
     struct sockaddr_in sa_local;
@@ -33,7 +35,6 @@ int main(int argc, char* argv[]) {
         perror("[Chatroom] Setsockopt failed: ");
         exit(EXIT_FAILURE);
     }
-
     if(bind(local_sd, (struct sockaddr*)&sa_local, sizeof(sa_local)) < 0) {
         perror("[Chatroom] Binding socket failed: ");
         exit(EXIT_FAILURE);
@@ -59,6 +60,11 @@ int main(int argc, char* argv[]) {
     timeout.tv_sec = 0;
     timeout.tv_usec = 10000;
 
+    FILE *msg_file;
+    if(!(msg_file = fopen(MESSAGE_STORE_FILE, "w"))) {
+        perror("[Chatroom] Cannot open file: ");
+        exit(EXIT_FAILURE);
+    }
     char readbuf[BUFFER_MAX] = { 0 };
     while(1) {
         read_fds = master_fds;
@@ -109,6 +115,9 @@ int main(int argc, char* argv[]) {
                             msgread += recvbytes;
                         }
                         printf("[New Mesg] %s", readbuf);
+                        fwrite(readbuf, sizeof(char), msgread-1, msg_file); // -1 for the last '\0'
+                        fputs("", msg_file);
+                        fflush(msg_file);
                         for(j = 0; j <= fd_max; j++) {
                             if(FD_ISSET(j, &master_fds)) {
                                 if((j != local_sd) && (j != i)) {
@@ -127,5 +136,6 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    fclose(msg_file);
     return 0;
 }
