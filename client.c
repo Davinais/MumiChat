@@ -14,24 +14,26 @@
 int local_sd;
 
 void* recvHandle() {
-    int len;
+    int local_msglen;
     char buf[BUFFER_MAX];
-    while ((len = recv(local_sd, buf, sizeof(buf), 0))) {
+    while ((local_msglen = recv(local_sd, buf, sizeof(buf), 0))) {
         fputs(buf, stdout);
     }
     pthread_exit(NULL);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     struct hostent *hp;
     struct sockaddr_in sin;
     char buf[BUFFER_MAX];
-    int len;
 
-    char* host = "127.0.0.1";
-    hp = gethostbyname(host);
+    if(argc != 2) {
+        fprintf(stderr, "Error: Usage: %s Server-IP\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    hp = gethostbyname(argv[1]);
     if (!hp) {
-        fprintf(stderr, "talk: unknown host: %s\n", host);
+        fprintf(stderr, "[Chatroom] unknown host: %s\n", argv[1]);
         exit(EXIT_FAILURE);
     }
     memset((char *)&sin, 0, sizeof(sin));
@@ -40,29 +42,29 @@ int main() {
     sin.sin_port = htons(DEFAULT_SERVER_PORT);
 
     if ((local_sd = socket(PF_INET,SOCK_STREAM,0)) < 0) {
-        perror("talk: socket");
+        perror("[Chatroom] Creating socket failed: ");
         exit(EXIT_FAILURE);
     }
     if (connect(local_sd, (struct sockaddr *) &sin, sizeof(sin))  < 0 ) {
-        perror("talk: connect"); 
+        perror("[Chatroom] Connect failed: "); 
         exit(EXIT_FAILURE);
     }
 
     pthread_t recvs;
     if(pthread_create(&recvs, NULL, recvHandle, NULL) != 0) {
-        perror("Create Thread failed: ");
+        perror("[Chatroom] Create Thread failed: ");
         exit(EXIT_FAILURE);
     }
     pthread_detach(recvs);
 
-    uint16_t msglen = 0;
-    while ( fgets(buf, sizeof(buf), stdin) )  {
+    uint16_t net_msglen = 0;
+    uint32_t local_msglen = 0;
+    while (fgets(buf, sizeof(buf), stdin))  {
         buf[BUFFER_MAX-1] = '\0' ; 
-        msglen = strlen(buf) + 1;
-        len = msglen;
-        msglen = htons(msglen);
-        send(local_sd, &msglen, 2, 0);
-        send(local_sd, buf, len, 0 ) ; 
+        local_msglen = strlen(buf) + 1;
+        net_msglen = htons(local_msglen);
+        send(local_sd, &net_msglen, 2, 0);
+        send(local_sd, buf, local_msglen, 0 ) ; 
     }
     return 0;
 }
