@@ -4,6 +4,12 @@
 # Object files
 *.o
 
+# Binary files
+bin
+
+# Chat log files
+chatmsg.txt
+
 # Libraries
 *.lib
 *.a
