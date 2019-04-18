@@ -69,6 +69,7 @@ int main(int argc, char* argv[]) {
     packet_t uni_pkt;
     memset((char *)&uni_pkt, 0, sizeof(uni_pkt));
     struct tm *rxtm;
+    printf("[Chatroom] Start Mumi Chatroom Server on Port %d\n", DEFAULT_SERVER_PORT);
     while(1) {
         read_fds = master_fds;
 
@@ -123,6 +124,7 @@ int main(int argc, char* argv[]) {
                     else {
                         switch(uni_pkt.opt) {
                             case SETNAME: {
+                                uni_pkt.timestamp = time(NULL);
                                 if(!(checkName(&client_list, uni_pkt.username))) {
                                     printf("[Chatroom] Client %d name duplicate... Reject\n", i);
                                     uni_pkt.opt = NAMEERR;
