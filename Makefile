@@ -7,19 +7,25 @@ SRC_DIR = src
 
 SOURCES := $(wildcard $(SRC_DIR)/*.c)
 INCLUDES := ./$(SRC_DIR)
+SERVER_OBJ := $(BUILD_DIR)/server.o $(BUILD_DIR)/list.o
+CLIENT_OBJ := $(BUILD_DIR)/client.o $(BUILD_DIR)/client_ui.o $(BUILD_DIR)/client_ui_interact.o
+DEPS := $(SOURCES:%.c=%.d)
 
 all: $(BIN_DIR)/server $(BIN_DIR)/client
 
-$(BIN_DIR)/server: $(BUILD_DIR)/server.o $(BUILD_DIR)/list.o
+$(BIN_DIR)/server: $(SERVER_OBJ)
 	@mkdir -p $(BIN_DIR)
-	$(CC) -o $@ $(BUILD_DIR)/server.o $(BUILD_DIR)/list.o
+	$(CC) -o $@ $(SERVER_OBJ)
 
-$(BIN_DIR)/client: $(BUILD_DIR)/client.o
+$(BIN_DIR)/client: $(CLIENT_OBJ)
 	@mkdir -p $(BIN_DIR)
-	$(CC) -o $@ -pthread $(BUILD_DIR)/client.o
+	$(CC) -o $@ $(CLIENT_OBJ) -pthread -lncurses 
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(SRC_DIR)/packet.h
+-include $(DEPS)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(BUILD_DIR)
+	@$(CC) -MM $< > $(BUILD_DIR)/$*.d
 	$(CC) -I$(INCLUDES) $(CFLAGS) -c $< -o $@
 
 clean:
