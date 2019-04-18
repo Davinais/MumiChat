@@ -20,6 +20,7 @@
 
 int main(int argc, char* argv[]) {
     
+    // Set Server Info
     struct sockaddr_in sa_local;
     memset(&sa_local, 0, sizeof(sa_local));
     sa_local.sin_family = AF_INET;
@@ -49,6 +50,7 @@ int main(int argc, char* argv[]) {
     uint32_t addrlen, recvbytes;
     struct sockaddr_in sa_client;
 
+    // Prepare data to use select() later
     int fd_max;
     struct timeval timeout;
     fd_set master_fds, read_fds;
@@ -57,9 +59,11 @@ int main(int argc, char* argv[]) {
 
     FD_SET(local_sd, &master_fds);
     fd_max = local_sd;
+    // Setting select() timeout to 10ms
     timeout.tv_sec = 0;
     timeout.tv_usec = 10000;
 
+    // Prepare log file
     FILE *msg_file;
     if(!(msg_file = fopen(MESSAGE_STORE_FILE, "w"))) {
         perror("[Chatroom] Cannot open file: ");
@@ -73,13 +77,17 @@ int main(int argc, char* argv[]) {
     while(1) {
         read_fds = master_fds;
 
+        // Using select to determine which fd has event
+        // Then we can do server in single-thread
         if(select(fd_max+1, &read_fds, NULL, NULL, &timeout) < 0) {
             perror("[Chatroom] Select Failed: ");
             exit(EXIT_FAILURE);
         }
 
         for(i = 0; i <= fd_max; i++) {
+            // Check which fd has read event
             if(FD_ISSET(i, &read_fds)) {
+                // If local socket has read event => New client connected
                 if(i == local_sd) {
                     addrlen = sizeof(sa_client);
                     if((client_sd = accept(local_sd, (struct sockaddr *)&sa_client, &addrlen)) < 0) {
@@ -96,12 +104,14 @@ int main(int argc, char* argv[]) {
                         printf("[Chatroom] New Client: %d\n", client_sd);
                     }
                 }
+                // Otherwise, receicing connected socket's packet
                 else {
                     if((recvbytes = recv(i, &uni_pkt, sizeof(uni_pkt), 0)) <= 0) {
                         client_t *client = searchClient(&client_list, i);
                         if(recvbytes == 0) {
                             // Broadcast leave message
                             sprintf(uni_pkt.buf, "<%s> has left the chatroom", client->username);
+                            // Setting packet and timestamp
                             uni_pkt.timestamp = time(NULL);
                             uni_pkt.opt = SENDNOTIFY;
                             removeClient(client);
@@ -122,11 +132,16 @@ int main(int argc, char* argv[]) {
                         FD_CLR(i, &master_fds);
                     }
                     else {
+                        // Determine which action to do
                         switch(uni_pkt.opt) {
                             case SETNAME: {
                                 uni_pkt.timestamp = time(NULL);
+                                // Check if the name is used
                                 if(!(checkName(&client_list, uni_pkt.username))) {
+                                    // If is used, reject the request
+                                    // Maintain this client in UNSETNAME state
                                     printf("[Chatroom] Client %d name duplicate... Reject\n", i);
+                                    // Return failed message to the client
                                     uni_pkt.opt = NAMEERR;
                                     if((send(i, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
                                         perror("[Chatroom] send Failed: ");
@@ -136,12 +151,14 @@ int main(int argc, char* argv[]) {
                                     client_t *client = searchClient(&client_list, i);
                                     strcpy(client->username, uni_pkt.username);
                                     printf("[Chatroom] Client %d set name: %s\n", i, client->username);
+                                    // Return success message to the client
                                     uni_pkt.opt = NAMESUC;
                                     if((send(i, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
                                         perror("[Chatroom] send Failed: ");
                                     }
-                                    // Broadcast welcome message
+                                    // Change client's state to normal
                                     client->state = NORMAL_CHAT;
+                                    // Broadcast welcome message
                                     sprintf(uni_pkt.buf, "<%s> has come into the chatroom", client->username);
                                     uni_pkt.timestamp = time(NULL);
                                     uni_pkt.opt = SENDNOTIFY;
@@ -157,11 +174,14 @@ int main(int argc, char* argv[]) {
                                 printf("[New Mesg] <%s> %s\n", uni_pkt.username, uni_pkt.buf);
                                 uni_pkt.timestamp = time(NULL);
                                 rxtm = localtime(&(uni_pkt.timestamp));
+                                // Save to log file
                                 fprintf(msg_file, "%02d:%02d:%02d | [%s] %s\n", 
                                     rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, uni_pkt.username, uni_pkt.buf);
                                 fflush(msg_file);
+                                // Send to each client
                                 client_t* client;
                                 list_for_each_entry(client, &client_list, list) {
+                                    // Only client that have name set can got the message
                                     if(client->state == NORMAL_CHAT) {
                                         if((send(client->fd, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
                                             perror("[Chatroom] send Failed: ");
