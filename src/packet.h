@@ -13,8 +13,9 @@
 #define CONTINUOUS_PKT 1
 
 /* Packet Options */
-#define SETNAME 1
-#define SENDMSG 2
+#define SETNAME     1
+#define SENDMSG     2
+#define SENDNOTIFY  3
 
 /* Server Response */
 #define SUCCESS 100

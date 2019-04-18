@@ -21,7 +21,8 @@ void* recvHandle() {
     while ((local_msglen = recv(local_sd, &rx_pkt, sizeof(rx_pkt), 0))) {
         rxtm = localtime(&(rx_pkt.timestamp));
         fprintf(stdout, "%02d:%02d:%02d | [%s] %s\n", 
-            rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, rx_pkt.username, rx_pkt.buf);
+            rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, 
+            ((rx_pkt.opt == SENDNOTIFY)?("SERVER"):(rx_pkt.username)), rx_pkt.buf);
     }
     pthread_exit(NULL);
 }
@@ -50,6 +51,7 @@ int main(int argc, char *argv[]) {
     // TODO: Input Buffer Check
     fgets(tx_pkt.username, sizeof(tx_pkt.username), stdin);
     tx_pkt.username[strlen(tx_pkt.username)-1] = '\0';
+
     if ((local_sd = socket(PF_INET,SOCK_STREAM,0)) < 0) {
         perror("[Chatroom] Creating socket failed: ");
         exit(EXIT_FAILURE);
@@ -58,6 +60,31 @@ int main(int argc, char *argv[]) {
         perror("[Chatroom] Connect failed: "); 
         exit(EXIT_FAILURE);
     }
+    // Sending Packet Contains Username And Check
+    while(1) {
+        tx_pkt.opt = SETNAME;
+        if((send(local_sd, &tx_pkt, sizeof(tx_pkt), 0)) < 0) {
+            perror("[Chatroom] Recv failed: ");
+            exit(EXIT_FAILURE);
+        }
+        packet_t tmp_pkt;
+        do {
+            if(recv(local_sd, &tmp_pkt, sizeof(tmp_pkt), 0) < 0) {
+                perror("[Chatroom] Recv failed: ");
+                exit(EXIT_FAILURE);
+            }
+        } while(tmp_pkt.opt == SENDMSG);
+        if(tmp_pkt.opt == NAMEERR) {
+            printf("Username Duplicate! Please Choose other names.\n");
+            printf("Enter User Name: ");
+            // TODO: Input Buffer Check
+            fgets(tx_pkt.username, sizeof(tx_pkt.username), stdin);
+            tx_pkt.username[strlen(tx_pkt.username)-1] = '\0';
+        }
+        else {
+            break;
+        }
+    } 
 
     pthread_t recvs;
     if(pthread_create(&recvs, NULL, recvHandle, NULL) != 0) {

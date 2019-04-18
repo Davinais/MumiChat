@@ -10,9 +10,9 @@ INCLUDES := ./$(SRC_DIR)
 
 all: $(BIN_DIR)/server $(BIN_DIR)/client
 
-$(BIN_DIR)/server: $(BUILD_DIR)/server.o
+$(BIN_DIR)/server: $(BUILD_DIR)/server.o $(BUILD_DIR)/list.o
 	@mkdir -p $(BIN_DIR)
-	$(CC) -o $@ $(BUILD_DIR)/server.o
+	$(CC) -o $@ $(BUILD_DIR)/server.o $(BUILD_DIR)/list.o
 
 $(BIN_DIR)/client: $(BUILD_DIR)/client.o
 	@mkdir -p $(BIN_DIR)

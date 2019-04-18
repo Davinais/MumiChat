@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
-#include "packet.h"
+#include "server.h"
 
 #define DEFAULT_SERVER_PORT 9487
 #define MAX_CONNECT 20
@@ -65,6 +65,7 @@ int main(int argc, char* argv[]) {
         perror("[Chatroom] Cannot open file: ");
         exit(EXIT_FAILURE);
     }
+    LIST_HEAD(client_list);
     packet_t uni_pkt;
     memset((char *)&uni_pkt, 0, sizeof(uni_pkt));
     struct tm *rxtm;
@@ -85,6 +86,9 @@ int main(int argc, char* argv[]) {
                     }
                     else {
                         FD_SET(client_sd, &master_fds);
+                        client_t *client = addClient(&client_list);
+                        client->fd = client_sd;
+                        client->state = UNSETNAME;
                         if(client_sd > fd_max) {
                             fd_max = client_sd;
                         }
@@ -93,33 +97,80 @@ int main(int argc, char* argv[]) {
                 }
                 else {
                     if((recvbytes = recv(i, &uni_pkt, sizeof(uni_pkt), 0)) <= 0) {
+                        client_t *client = searchClient(&client_list, i);
                         if(recvbytes == 0) {
+                            // Broadcast leave message
+                            sprintf(uni_pkt.buf, "<%s> has left the chatroom", client->username);
+                            uni_pkt.timestamp = time(NULL);
+                            uni_pkt.opt = SENDNOTIFY;
+                            removeClient(client);
+                            list_for_each_entry(client, &client_list, list) {
+                                if(client->state == NORMAL_CHAT) {
+                                    if((send(client->fd, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
+                                        perror("[Chatroom] send Failed: ");
+                                    }
+                                }
+                            }
                             printf("[Chatroom] Client Disconnected: %d\n", i);
                         }
                         else {
+                            removeClient(client);
                             perror("[Chatroom] recv Failed: ");
                         }
                         close(i);
                         FD_CLR(i, &master_fds);
                     }
                     else {
-                        if(uni_pkt.opt == SENDMSG) {
-                            printf("[New Mesg] <%s> %s\n", uni_pkt.username, uni_pkt.buf);
-                            uni_pkt.timestamp = time(NULL);
-                            rxtm = localtime(&(uni_pkt.timestamp));
-                            fprintf(msg_file, "%02d:%02d:%02d | [%s] %s\n", 
-                                rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, uni_pkt.username, uni_pkt.buf);
-                            fflush(msg_file);
-                            for(j = 0; j <= fd_max; j++) {
-                                if(FD_ISSET(j, &master_fds)) {
-                                    if((j != local_sd) && (j != i)) {
-                                        if((send(j, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
+                        switch(uni_pkt.opt) {
+                            case SETNAME: {
+                                if(!(checkName(&client_list, uni_pkt.username))) {
+                                    printf("[Chatroom] Client %d name duplicate... Reject\n", i);
+                                    uni_pkt.opt = NAMEERR;
+                                    if((send(i, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
+                                        perror("[Chatroom] send Failed: ");
+                                    }
+                                }
+                                else {
+                                    client_t *client = searchClient(&client_list, i);
+                                    strcpy(client->username, uni_pkt.username);
+                                    printf("[Chatroom] Client %d set name: %s\n", i, client->username);
+                                    uni_pkt.opt = NAMESUC;
+                                    if((send(i, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
+                                        perror("[Chatroom] send Failed: ");
+                                    }
+                                    // Broadcast welcome message
+                                    client->state = NORMAL_CHAT;
+                                    sprintf(uni_pkt.buf, "<%s> has come into the chatroom", client->username);
+                                    uni_pkt.timestamp = time(NULL);
+                                    uni_pkt.opt = SENDNOTIFY;
+                                    list_for_each_entry(client, &client_list, list) {
+                                        if((send(client->fd, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
                                             perror("[Chatroom] send Failed: ");
                                         }
                                     }
                                 }
+                                break;
                             }
-                        } 
+                            case SENDMSG: {
+                                printf("[New Mesg] <%s> %s\n", uni_pkt.username, uni_pkt.buf);
+                                uni_pkt.timestamp = time(NULL);
+                                rxtm = localtime(&(uni_pkt.timestamp));
+                                fprintf(msg_file, "%02d:%02d:%02d | [%s] %s\n", 
+                                    rxtm->tm_hour, rxtm->tm_min, rxtm->tm_sec, uni_pkt.username, uni_pkt.buf);
+                                fflush(msg_file);
+                                client_t* client;
+                                list_for_each_entry(client, &client_list, list) {
+                                    if(client->state == NORMAL_CHAT) {
+                                        if((send(client->fd, &uni_pkt, sizeof(uni_pkt), 0)) < 0) {
+                                            perror("[Chatroom] send Failed: ");
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                            default:
+                                break;
+                        }
                     }
                 }
             }
