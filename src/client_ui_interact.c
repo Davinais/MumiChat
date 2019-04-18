@@ -19,7 +19,7 @@ int userInput(struct client_ui *ui, char *buf, int buf_size) {
     wrefresh(ui->input_win);
     while ((ch = getch()) != '\n') {
         // Backspace
-        if (ch == KEY_BACKSPACE || ch == KEY_DC || ch == KEY_LEFT) {
+        if (ch == KEY_BACKSPACE || ch == KEY_DC || ch == KEY_LEFT || ch == 8 || ch == 127) {
             if (i > 0) {
                 wprintw(ui->input_win, "\b \b");
                 buf[--i] = '\0';
