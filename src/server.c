@@ -59,9 +59,6 @@ int main(int argc, char* argv[]) {
 
     FD_SET(local_sd, &master_fds);
     fd_max = local_sd;
-    // Setting select() timeout to 10ms
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 10000;
 
     // Prepare log file
     FILE *msg_file;
@@ -77,6 +74,11 @@ int main(int argc, char* argv[]) {
     while(1) {
         read_fds = master_fds;
 
+        // Setting select() timeout to 1s
+        // Since select() will modify timeout to the timeout left since last call,
+        // we need to reassign the value before every call of select()
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
         // Using select to determine which fd has event
         // Then we can do server in single-thread
         if(select(fd_max+1, &read_fds, NULL, NULL, &timeout) < 0) {
